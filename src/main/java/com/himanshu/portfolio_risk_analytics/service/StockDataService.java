@@ -12,19 +12,22 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.logging.Level;
+
 @Service
 public class StockDataService {
     private static final Logger logger = Logger.getLogger(StockDataService.class.getName());
     private static final int MIN_DATA_POINTS = 10;
-    private static final long API_CALL_DELAY_MS = 13000; // 13 seconds to respect 5 calls/minute limit
+    private static final long API_CALL_DELAY_MS = 13000; // 13 seconds for free tier (5 calls/min)
     private static final int CACHE_SIZE_LIMIT = 500;
-    @Value("${app.alphavantage.api-key}")
+
+    @Value("${app.alphavantage.api-key:demo}")
     private String apiKey;
 
     private final StockDataRepository stockDataRepository;
     private final RestClient restClient;
     private final ObjectMapper mapper;
     private final Map<String, StockData> memoryCache;
+    private long lastApiCallTime = 0;
 
     public StockDataService(StockDataRepository stockDataRepository) {
         this.stockDataRepository = stockDataRepository;
@@ -64,8 +67,10 @@ public class StockDataService {
             return dbData.get();
         }
 
-        // Fetch from API
+        // Fetch from API with rate limiting
         logger.log(Level.INFO, "Fetching from Alpha Vantage: " + cacheKey);
+        enforceRateLimit();
+
         StockData stockData = fetchFromAlphaVantage(ticker, market);
 
         // Save to database
@@ -80,6 +85,22 @@ public class StockDataService {
         return saved;
     }
 
+    private void enforceRateLimit() {
+        long now = System.currentTimeMillis();
+        long timeSinceLastCall = now - lastApiCallTime;
+
+        if (timeSinceLastCall < API_CALL_DELAY_MS) {
+            long sleepTime = API_CALL_DELAY_MS - timeSinceLastCall;
+            logger.log(Level.INFO, "Rate limiting: waiting " + sleepTime + "ms");
+            try {
+                Thread.sleep(sleepTime);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        lastApiCallTime = System.currentTimeMillis();
+    }
+
     private StockData fetchFromAlphaVantage(String ticker, String market) {
         if (ticker == null || ticker.trim().isEmpty()) {
             throw new IllegalArgumentException("Ticker cannot be null or empty");
@@ -88,15 +109,34 @@ public class StockDataService {
         // Adjust ticker for market
         String adjustedTicker = ticker.trim().toUpperCase();
         if ("INDIA".equalsIgnoreCase(market) && !adjustedTicker.contains(".")) {
-            adjustedTicker = adjustedTicker + ".NSE"; // Default to NSE for Indian stocks
+            adjustedTicker = adjustedTicker + ".NSE";
         }
 
+        // Try compact first, then full if needed
+        StockData stockData = tryFetchWithOutputSize(adjustedTicker, market, "compact");
+
+        if (stockData == null || stockData.getDailyReturns().size() < MIN_DATA_POINTS) {
+            logger.log(Level.WARNING, "Compact output insufficient for " + adjustedTicker +
+                    ", retrying with full output");
+            enforceRateLimit();
+            stockData = tryFetchWithOutputSize(adjustedTicker, market, "full");
+        }
+
+        if (stockData == null || stockData.getDailyReturns().isEmpty()) {
+            throw new RuntimeException("No data available for " + ticker +
+                    ". Ensure the ticker is valid and has historical data.");
+        }
+
+        return stockData;
+    }
+
+    private StockData tryFetchWithOutputSize(String adjustedTicker, String market, String outputSize) {
         String url = String.format(
-                "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=%s&apikey=%s&outputsize=full",
-                adjustedTicker, apiKey);
+                "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=%s&outputsize=%s&apikey=%s",
+                adjustedTicker, outputSize, apiKey);
 
         try {
-            logger.log(Level.INFO, "Fetching data from Alpha Vantage for: " + adjustedTicker);
+            logger.log(Level.INFO, "Fetching " + outputSize + " data for: " + adjustedTicker);
 
             String response = restClient.get()
                     .uri(url)
@@ -107,92 +147,120 @@ public class StockDataService {
                 throw new RuntimeException("Empty response from Alpha Vantage API");
             }
 
-            JsonNode root = mapper.readTree(response);
-
-            // Check for rate limits
-            if (root.has("Note")) {
-                throw new RuntimeException("Alpha Vantage rate limit: " + root.get("Note").asText());
-            }
-
-            if (root.has("Error Message")) {
-                throw new RuntimeException("Invalid ticker: " + adjustedTicker);
-            }
-
-            // Extract time series data
-            JsonNode timeSeries = root.path("Time Series (Daily)");
-            if (timeSeries.isMissingNode()) {
-                throw new RuntimeException("No historical data for " + adjustedTicker);
-            }
-
-            // Parse data
-            List<String> dates = new ArrayList<>();
-            timeSeries.fieldNames().forEachRemaining(dates::add);
-            Collections.sort(dates);
-
-            if (dates.size() < MIN_DATA_POINTS) {
-                throw new RuntimeException("Insufficient data points");
-            }
-
-            // Calculate returns
-            Map<String, Double> dailyReturns = new LinkedHashMap<>();
-            List<Double> prices = new ArrayList<>();
-
-            for (String date : dates) {
-                double closePrice = timeSeries.path(date).path("4. close").asDouble();
-                if (closePrice > 0) {
-                    prices.add(closePrice);
-                }
-            }
-
-            for (int i = 1; i < prices.size(); i++) {
-                double ret = (prices.get(i) - prices.get(i - 1)) / prices.get(i - 1);
-                dailyReturns.put(dates.get(i), ret);
-            }
-
-            // Get latest price data
-            Map.Entry<String, JsonNode> latestEntry = timeSeries.fields().next();
-            JsonNode latestDate = latestEntry.getValue();
-            double closePrice = latestDate.path("4. close").asDouble();
-            double openPrice = latestDate.path("1. open").asDouble();
-            double highPrice = latestDate.path("2. high").asDouble();
-            double lowPrice = latestDate.path("3. low").asDouble();
-            long volume = latestDate.path("5. volume").asLong();
-
-            StockData stockData = StockData.builder()
-                    .ticker(ticker.toUpperCase())
-                    .market(market)
-                    .dailyReturns(dailyReturns)
-                    .currentPrice(closePrice)
-                    .openPrice(openPrice)
-                    .highPrice(highPrice)
-                    .lowPrice(lowPrice)
-                    .volume(volume)
-                    .dataDate(LocalDateTime.now())
-                    .lastUpdatedAt(LocalDateTime.now())
-                    .nextRefreshAt(LocalDateTime.now().plusDays(1))
-                    .source("ALPHA_VANTAGE")
-                    .isStale(false)
-                    .build();
-
-            logger.log(Level.INFO, "Successfully fetched data for " + ticker);
-            return stockData;
+            return parseAlphaVantageResponse(response, adjustedTicker, market, url);
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Failed to fetch data: " + e.getMessage());
-            throw new RuntimeException("Failed to fetch data for " + ticker, e);
+            logger.log(Level.WARNING, "Failed to fetch with " + outputSize + " output: " + e.getMessage());
+            return null;
         }
+    }
+
+    private StockData parseAlphaVantageResponse(String response, String adjustedTicker,
+                                                String market, String url) throws Exception {
+        JsonNode root = mapper.readTree(response);
+
+        // Check for rate limits
+        if (root.has("Note")) {
+            String note = root.get("Note").asText();
+            logger.log(Level.WARNING, "Alpha Vantage rate limit: " + note);
+            throw new RuntimeException("API rate limit reached. Free tier: 5 requests/minute. " + note);
+        }
+
+        if (root.has("Information")) {
+            String info = root.get("Information").asText();
+            logger.log(Level.WARNING, "API Information: " + info);
+            throw new RuntimeException("API message: " + info);
+        }
+
+        // Check for error messages
+        if (root.has("Error Message")) {
+            String error = root.get("Error Message").asText();
+            logger.log(Level.WARNING, "API Error for " + adjustedTicker + ": " + error);
+            throw new RuntimeException("Invalid ticker or API error: " + error);
+        }
+
+        // Extract time series data
+        JsonNode timeSeries = root.path("Time Series (Daily)");
+        if (timeSeries.isMissingNode() || !timeSeries.isObject()) {
+            logger.log(Level.WARNING, "No time series data found for: " + adjustedTicker);
+            logger.log(Level.INFO, "Response preview: " + response.substring(0, Math.min(500, response.length())));
+            throw new RuntimeException("No historical data available for " + adjustedTicker);
+        }
+
+        // Parse data
+        List<String> dates = new ArrayList<>();
+        timeSeries.fieldNames().forEachRemaining(dates::add);
+        Collections.sort(dates);
+
+        if (dates.isEmpty()) {
+            throw new RuntimeException("No data points available for " + adjustedTicker);
+        }
+
+        logger.log(Level.INFO, "Found " + dates.size() + " dates for " + adjustedTicker);
+
+        // Extract prices and calculate returns
+        Map<String, Double> dailyReturns = new LinkedHashMap<>();
+        List<Double> prices = new ArrayList<>();
+
+        for (String date : dates) {
+            double closePrice = timeSeries.path(date).path("4. close").asDouble();
+            if (closePrice > 0) {
+                prices.add(closePrice);
+            }
+        }
+
+        if (prices.size() < MIN_DATA_POINTS) {
+            throw new RuntimeException("Insufficient valid data points for " + adjustedTicker +
+                    ". Found: " + prices.size() + ", Need: " + MIN_DATA_POINTS);
+        }
+
+        // Calculate returns
+        for (int i = 1; i < prices.size(); i++) {
+            double ret = (prices.get(i) - prices.get(i - 1)) / prices.get(i - 1);
+            dailyReturns.put(dates.get(i), ret);
+        }
+
+        // Get latest price data (most recent date)
+        String latestDate = dates.get(dates.size() - 1);
+        JsonNode latestData = timeSeries.path(latestDate);
+
+        double closePrice = latestData.path("4. close").asDouble();
+        double openPrice = latestData.path("1. open").asDouble();
+        double highPrice = latestData.path("2. high").asDouble();
+        double lowPrice = latestData.path("3. low").asDouble();
+        long volume = latestData.path("5. volume").asLong();
+
+        StockData stockData = StockData.builder()
+                .ticker(adjustedTicker.split("\\.")[0]) // Remove market suffix for storage
+                .market(market)
+                .dailyReturns(dailyReturns)
+                .currentPrice(closePrice)
+                .openPrice(openPrice)
+                .highPrice(highPrice)
+                .lowPrice(lowPrice)
+                .volume(volume)
+                .dataDate(LocalDateTime.now())
+                .lastUpdatedAt(LocalDateTime.now())
+                .nextRefreshAt(LocalDateTime.now().plusDays(1))
+                .source("ALPHA_VANTAGE")
+                .isStale(false)
+                .build();
+
+        logger.log(Level.INFO, "Successfully parsed data for " + adjustedTicker +
+                " with " + dailyReturns.size() + " daily returns");
+        return stockData;
     }
 
     public void refreshStaleData() {
         List<StockData> staleData = stockDataRepository.findStaleData(LocalDateTime.now());
         for (StockData data : staleData) {
             try {
+                enforceRateLimit();
                 StockData refreshed = fetchFromAlphaVantage(data.getTicker(), data.getMarket());
                 stockDataRepository.save(refreshed);
-                logger.log(Level.INFO, "Refreshed data for " + data.getTicker());
-                Thread.sleep(API_CALL_DELAY_MS); // Rate limiting
+                logger.log(Level.INFO, "Refr    eshed data for " + data.getTicker());
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Failed to refresh " + data.getTicker());
+                logger.log(Level.WARNING, "Failed to refresh " + data.getTicker() + ": " + e.getMessage());
             }
         }
     }
