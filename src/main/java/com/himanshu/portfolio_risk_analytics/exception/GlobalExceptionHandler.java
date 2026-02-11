@@ -1,6 +1,7 @@
 package com.himanshu.portfolio_risk_analytics.exception;
 import com.himanshu.portfolio_risk_analytics.dto.ApiResponse;
 import com.himanshu.portfolio_risk_analytics.dto.ErrorResponse;
+import jakarta.validation.ValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
