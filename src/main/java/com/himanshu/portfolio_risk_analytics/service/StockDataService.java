@@ -150,12 +150,13 @@ public class StockDataService {
             }
 
             // Get latest price data
-            JsonNode latestDate = timeSeries.fields().next();
-            double closePrice = latestDate.getValue().path("4. close").asDouble();
-            double openPrice = latestDate.getValue().path("1. open").asDouble();
-            double highPrice = latestDate.getValue().path("2. high").asDouble();
-            double lowPrice = latestDate.getValue().path("3. low").asDouble();
-            long volume = latestDate.getValue().path("5. volume").asLong();
+            Map.Entry<String, JsonNode> latestEntry = timeSeries.fields().next();
+            JsonNode latestDate = latestEntry.getValue();
+            double closePrice = latestDate.path("4. close").asDouble();
+            double openPrice = latestDate.path("1. open").asDouble();
+            double highPrice = latestDate.path("2. high").asDouble();
+            double lowPrice = latestDate.path("3. low").asDouble();
+            long volume = latestDate.path("5. volume").asLong();
 
             StockData stockData = StockData.builder()
                     .ticker(ticker.toUpperCase())

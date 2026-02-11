@@ -1,4 +1,5 @@
 package com.himanshu.portfolio_risk_analytics.security;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -11,6 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.logging.Logger;
 import java.util.logging.Level;
+
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger logger = Logger.getLogger(JwtAuthenticationFilter.class.getName());

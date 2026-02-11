@@ -1,4 +1,5 @@
 package com.himanshu.portfolio_risk_analytics.controller;
+
 import com.himanshu.portfolio_risk_analytics.dto.ApiResponse;
 import com.himanshu.portfolio_risk_analytics.dto.AnalysisRequest;
 import com.himanshu.portfolio_risk_analytics.dto.AnalysisResponse;
@@ -14,9 +15,11 @@ import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.logging.Logger;
 import java.util.logging.Level;
+
 @RestController
 @RequestMapping("/api/v1/analytics")
 @CrossOrigin(origins = "*")
+
 public class AnalyticsController {
     private static final Logger logger = Logger.getLogger(AnalyticsController.class.getName());
     private final RiskService riskService;

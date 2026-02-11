@@ -1,4 +1,5 @@
 package com.himanshu.portfolio_risk_analytics.exception;
+
 import com.himanshu.portfolio_risk_analytics.dto.ApiResponse;
 import com.himanshu.portfolio_risk_analytics.dto.ErrorResponse;
 import jakarta.validation.ValidationException;
@@ -16,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 import java.util.logging.Level;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger logger = Logger.getLogger(GlobalExceptionHandler.class.getName());

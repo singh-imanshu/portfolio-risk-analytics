@@ -1,4 +1,5 @@
 package com.himanshu.portfolio_risk_analytics.security;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.security.Key;
 import java.util.Date;
 import java.util.logging.Logger;
+
 @Component
 public class JwtTokenProvider {
     private static final Logger logger = Logger.getLogger(JwtTokenProvider.class.getName());
@@ -46,7 +48,7 @@ public class JwtTokenProvider {
     }
 
     public String getUserIdFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
+        Claims claims = Jwts.parser()
                 .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
@@ -55,7 +57,7 @@ public class JwtTokenProvider {
     }
 
     public String getEmailFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
+        Claims claims = Jwts.parser()
                 .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
@@ -65,7 +67,7 @@ public class JwtTokenProvider {
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder()
+            Jwts.parser()
                     .setSigningKey(getSigningKey())
                     .build()
                     .parseClaimsJws(token);
