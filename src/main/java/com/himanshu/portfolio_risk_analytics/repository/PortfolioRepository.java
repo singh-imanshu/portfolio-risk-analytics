@@ -1,27 +1,14 @@
 package com.himanshu.portfolio_risk_analytics.repository;
-
-import com.himanshu.portfolio_risk_analytics.model.Portfolio;
+import com.himanshu.portfolio_risk_analytics.entity.Portfolio;
 import org.springframework.data.mongodb.repository.MongoRepository;
-import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
-import java.util.Optional;
 import java.util.List;
-
+import java.util.Optional;
 @Repository
 public interface PortfolioRepository extends MongoRepository<Portfolio, String> {
 
-    /**
-     * Find all portfolios for a specific user
-     */
     List<Portfolio> findByUserId(String userId);
-
-    /**
-     * Find a portfolio by userId (assuming one portfolio per user)
-     */
-    Optional<Portfolio> findFirstByUserId(String userId);
-
-    /**
-     * Check if a portfolio exists for a user
-     */
-    boolean existsByUserId(String userId);
+    Optional<Portfolio> findByIdAndUserId(String id, String userId);
+    boolean existsByIdAndUserId(String id, String userId);
+    List<Portfolio> findByUserIdAndIsActive(String userId, boolean isActive);
 }

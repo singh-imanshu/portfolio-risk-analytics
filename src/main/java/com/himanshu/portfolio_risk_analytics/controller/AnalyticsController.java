@@ -1,83 +1,134 @@
 package com.himanshu.portfolio_risk_analytics.controller;
-
-import com.himanshu.portfolio_risk_analytics.service.AlphaVantageService;
+import com.himanshu.portfolio_risk_analytics.dto.ApiResponse;
+import com.himanshu.portfolio_risk_analytics.dto.AnalysisRequest;
+import com.himanshu.portfolio_risk_analytics.dto.AnalysisResponse;
+import com.himanshu.portfolio_risk_analytics.dto.RiskMetricsDto;
 import com.himanshu.portfolio_risk_analytics.service.RiskService;
+import com.himanshu.portfolio_risk_analytics.service.StockDataService;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import java.util.*;
+import jakarta.validation.Valid;
+import java.time.LocalDateTime;
 import java.util.logging.Logger;
-
+import java.util.logging.Level;
 @RestController
-@RequestMapping("/api/analytics")
+@RequestMapping("/api/v1/analytics")
 @CrossOrigin(origins = "*")
 public class AnalyticsController {
-
     private static final Logger logger = Logger.getLogger(AnalyticsController.class.getName());
-    private static final int API_DELAY_MS = 13000; // 13 seconds to stay under 5 calls/minute
-
     private final RiskService riskService;
-    private final AlphaVantageService alphaVantageService;
+    private final StockDataService stockDataService;
     private final ChatClient chatClient;
 
     public AnalyticsController(RiskService riskService,
-                               AlphaVantageService alphaVantageService,
+                               StockDataService stockDataService,
                                ChatClient.Builder builder) {
         this.riskService = riskService;
-        this.alphaVantageService = alphaVantageService;
+        this.stockDataService = stockDataService;
         this.chatClient = builder.build();
     }
 
-    @PostMapping("/report")
-    public ResponseEntity<Map<String, Object>> getFullReport(@RequestBody List<String> tickers) {
-        // Validate input
-        if (tickers == null || tickers.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Tickers list cannot be empty"));
-        }
-
+    @PostMapping("/analyze")
+    public ResponseEntity<ApiResponse<AnalysisResponse>> analyzePortfolio(
+            @Valid @RequestBody AnalysisRequest request,
+            Authentication authentication) {
         try {
-            Map<String, double[]> returnsMap = new HashMap<>();
+            logger.log(Level.INFO, "Portfolio analysis started for: " + request.getTickers());
 
-            // Fetch data with rate limiting
-            for (int i = 0; i < tickers.size(); i++) {
-                String ticker = tickers.get(i);
-                logger.info("Fetching data for ticker: " + ticker);
-
-                returnsMap.put(ticker, alphaVantageService.getDailyReturns(ticker));
-
-                // Add delay between requests (except after the last one)
-                if (i < tickers.size() - 1) {
-                    Thread.sleep(API_DELAY_MS);
-                }
+            // Validate input
+            if (request.getTickers() == null || request.getTickers().isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Tickers list cannot be empty", "INVALID_INPUT"));
             }
 
-            // Equal weight portfolio
-            double[] weights = new double[tickers.size()];
-            Arrays.fill(weights, 1.0 / tickers.size());
+            // Use equal weights if not provided
+            double[] weights = request.getWeights() != null && !request.getWeights().isEmpty()
+                    ? request.getWeights().stream().mapToDouble(Double::doubleValue).toArray()
+                    : createEqualWeights(request.getTickers().size());
 
             // Calculate risk metrics
-            Map<String, Object> metrics = riskService.calculateRisk(returnsMap, weights);
+            RiskMetricsDto riskMetrics = riskService.calculateRiskMetrics(
+                    request.getTickers(), weights);
 
             // Get AI insights
-            String prompt = "Analyze these portfolio statistics and provide investment insights: " + metrics.toString();
-            String aiInsight = chatClient.prompt()
+            String aiInsight = generateAIInsight(riskMetrics);
+
+            AnalysisResponse response = AnalysisResponse.builder()
+                    .riskMetrics(riskMetrics)
+                    .aiInsight(aiInsight)
+                    .analyzedAt(LocalDateTime.now())
+                    .analysisType(request.getAnalysisType())
+                    .build();
+
+            logger.log(Level.INFO, "Portfolio analysis completed successfully");
+            return ResponseEntity.ok(ApiResponse.success(response, "Analysis complete"));
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Analysis failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Analysis failed: " + e.getMessage(), "ANALYSIS_FAILED"));
+        }
+    }
+
+    @PostMapping("/quick-analysis")
+    public ResponseEntity<ApiResponse<RiskMetricsDto>> quickAnalysis(
+            @Valid @RequestBody AnalysisRequest request) {
+        try {
+            if (request.getTickers() == null || request.getTickers().isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Tickers list cannot be empty", "INVALID_INPUT"));
+            }
+
+            double[] weights = request.getWeights() != null && !request.getWeights().isEmpty()
+                    ? request.getWeights().stream().mapToDouble(Double::doubleValue).toArray()
+                    : createEqualWeights(request.getTickers().size());
+
+            RiskMetricsDto metrics = riskService.calculateRiskMetrics(request.getTickers(), weights);
+            return ResponseEntity.ok(ApiResponse.success(metrics, "Quick analysis complete"));
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Quick analysis failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error(e.getMessage(), "QUICK_ANALYSIS_FAILED"));
+        }
+    }
+
+    private double[] createEqualWeights(int size) {
+        double[] weights = new double[size];
+        double weight = 1.0 / size;
+        for (int i = 0; i < size; i++) {
+            weights[i] = weight;
+        }
+        return weights;
+    }
+
+    private String generateAIInsight(RiskMetricsDto metrics) {
+        try {
+            String prompt = String.format(
+                    "Analyze this portfolio's risk metrics and provide investment insights:\\n" +
+                            "Volatility: %.2f%%\\n" +
+                            "Sharpe Ratio: %.2f\\n" +
+                            "Beta: %.2f\\n" +
+                            "Expected Annual Return: %.2f%%\\n" +
+                            "Tickers: %s\\n" +
+                            "Provide a brief 2-3 sentence investment recommendation based on these metrics.",
+                    metrics.getVolatility() * 100,
+                    metrics.getSharpeRatio(),
+                    metrics.getBeta(),
+                    metrics.getExpectedReturn() * 100,
+                    String.join(", ", metrics.getTickers())
+            );
+
+            return chatClient.prompt()
                     .user(prompt)
                     .call()
                     .content();
-
-            // Build response
-            Map<String, Object> response = new HashMap<>(metrics);
-            response.put("ai_insight", aiInsight);
-
-            return ResponseEntity.ok(response);
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.warning("Request interrupted: " + e.getMessage());
-            return ResponseEntity.status(500).body(Map.of("error", "Request was interrupted"));
         } catch (Exception e) {
-            logger.severe("Error generating report: " + e.getMessage());
-            return ResponseEntity.status(500).body(Map.of("error", "Failed to generate report: " + e.getMessage()));
+            logger.log(Level.WARNING, "AI insight generation failed: " + e.getMessage());
+            return "Unable to generate AI insights at this time. Please review the risk metrics above.";
         }
     }
 }
