@@ -17,7 +17,7 @@ import java.util.logging.Level;
 public class StockDataService {
     private static final Logger logger = Logger.getLogger(StockDataService.class.getName());
     private static final int MIN_DATA_POINTS = 10;
-    // Alpha Vantage free tier: 25 requests per day, 5 per minute
+    // Because we want to adhere to Alpha Vantage rate limits, perhaps some day we could use premium APIs :)
     private static final long API_CALL_DELAY_MS = 12000; // 12 seconds for 5 calls/min
     private static final int CACHE_SIZE_LIMIT = 500;
 
@@ -77,7 +77,7 @@ public class StockDataService {
 
         // Update memory cache
         if (memoryCache.size() >= CACHE_SIZE_LIMIT) {
-            memoryCache.clear(); // Simple eviction policy
+            memoryCache.clear();
         }
         memoryCache.put(cacheKey, saved);
 
@@ -141,7 +141,7 @@ public class StockDataService {
     }
 
     private StockData tryFetchWithOutputSize(String adjustedTicker, String market, String outputSize) {
-        // CRITICAL: Enforce rate limit BEFORE each API call
+        //Enforce rate limit BEFORE each API call
         enforceRateLimit();
 
         String url = String.format(
@@ -180,7 +180,7 @@ public class StockDataService {
         // Check for rate limits
         if (root.has("Note")) {
             String note = root.get("Note").asText();
-            logger.log(Level.SEVERE, "⚠️ Alpha Vantage rate limit hit: " + note);
+            logger.log(Level.SEVERE, "Alpha Vantage rate limit hit: " + note);
             throw new RuntimeException("API rate limit reached. Free tier allows 25 requests/day, 5/minute. " + note);
         }
 
@@ -193,7 +193,7 @@ public class StockDataService {
         // Check for error messages
         if (root.has("Error Message")) {
             String error = root.get("Error Message").asText();
-            logger.log(Level.SEVERE, "❌ API Error for " + adjustedTicker + ": " + error);
+            logger.log(Level.SEVERE, "API Error for " + adjustedTicker + ": " + error);
             throw new RuntimeException("Invalid ticker or API error: " + error);
         }
 
@@ -231,13 +231,13 @@ public class StockDataService {
         if (prices.size() < MIN_DATA_POINTS) {
             logger.log(Level.WARNING, "Insufficient data points for " + adjustedTicker +
                     ". Found: " + prices.size() + ", Need: " + MIN_DATA_POINTS);
-            // Still create the object but with warning
         }
 
         // Calculate returns
         for (int i = 1; i < prices.size(); i++) {
-            double ret = (prices.get(i) - prices.get(i - 1)) / prices.get(i - 1);
-            dailyReturns.put(dates.get(i), ret);
+            // Logarithmic returns
+            double logReturn = Math.log(prices.get(i) / prices.get(i - 1));
+            dailyReturns.put(dates.get(i), logReturn);
         }
 
         // Get latest price data (most recent date)

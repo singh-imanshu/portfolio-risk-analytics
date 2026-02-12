@@ -39,13 +39,13 @@ public class Holding {
 
     @Builder.Default
     @Positive(message = "Weight must be between 0 and 1")
-    private Double weight = 0.0; // Allocation weight (0-1)
+    private Double weight = 0.0;
 
-    private Double currentValue; // quantity * currentPrice
+    private Double currentValue;
 
-    private Double gainLoss; // currentValue - (quantity * purchasePrice)
+    private Double gainLoss;
 
-    private Double gainLossPercent; // (gainLoss / (quantity * purchasePrice)) * 100
+    private Double gainLossPercent;
 
     private String notes;
 

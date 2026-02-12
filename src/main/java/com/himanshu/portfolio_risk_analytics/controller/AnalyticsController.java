@@ -56,7 +56,7 @@ public class AnalyticsController {
             RiskMetricsDto riskMetrics = riskService.calculateRiskMetrics(
                     request.getTickers(), weights);
 
-            // Get AI insights
+            // Generate AI insights
             String aiInsight = generateAIInsight(riskMetrics);
 
             AnalysisResponse response = AnalysisResponse.builder()

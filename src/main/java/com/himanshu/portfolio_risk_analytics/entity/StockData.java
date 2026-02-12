@@ -32,7 +32,7 @@ public class StockData {
     private String ticker;
 
     @Indexed
-    private String market; // "US", "INDIA", etc.
+    private String market; // "US", "INDIA", "GLOBAL"
 
     // Historical daily returns (date -> return percentage)
     // Format: "2024-01-15" -> 0.025 (2.5% return)

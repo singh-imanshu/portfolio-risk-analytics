@@ -9,7 +9,7 @@ public class ChatClientConfig {
     @Bean
     public ChatClient chatClient(ChatClient.Builder builder) {
         return builder
-                .defaultSystem("You are a financial analyst expert in portfolio risk analysis. " +
+                .defaultSystem("You are a quantitative financial analyst expert in portfolio risk analysis. " +
                         "Provide concise, actionable insights based on quantitative metrics.")
                 .build();
     }
