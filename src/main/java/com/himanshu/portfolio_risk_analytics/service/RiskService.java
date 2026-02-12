@@ -18,10 +18,11 @@ import java.util.logging.Level;
 public class RiskService {
     private static final Logger logger = Logger.getLogger(RiskService.class.getName());
     private static final double RISK_FREE_RATE = 0.02; // 2% annual
-    private final StockDataRepository stockDataRepository;
 
-    public RiskService(StockDataRepository stockDataRepository) {
-        this.stockDataRepository = stockDataRepository;
+    private final StockDataService stockDataService;
+
+    public RiskService(StockDataService stockDataService) {
+        this.stockDataService = stockDataService;
     }
 
     public RiskMetricsDto calculateRiskMetrics(List<String> tickers, double[] weights) {
@@ -43,22 +44,32 @@ public class RiskService {
 
         logger.log(Level.INFO, "Calculating risk metrics for " + tickers.size() + " stocks");
 
-        // Fetch returns data for all tickers
+        // CHANGED: Use StockDataService instead of repository
+        // This will fetch from API if data doesn't exist, or use cache if it does
         Map<String, double[]> returnsMap = new HashMap<>();
         for (String ticker : tickers) {
-            StockData stockData = stockDataRepository.findByTickerAndMarket(ticker, "US")
-                    .orElseThrow(() -> new RuntimeException("No data found for ticker: " + ticker));
+            try {
+                logger.log(Level.INFO, "Fetching data for ticker: " + ticker);
 
-            double[] returns = stockData.getDailyReturns().values().stream()
-                    .mapToDouble(Double::doubleValue)
-                    .toArray();
+                // This method handles caching and API calls automatically
+                StockData stockData = stockDataService.getStockData(ticker, "US");
 
-            if (returns.length < 10) {
-                throw new RuntimeException("Insufficient data for " + ticker +
-                        ": " + returns.length + " days (need at least 10)");
+                double[] returns = stockData.getDailyReturns().values().stream()
+                        .mapToDouble(Double::doubleValue)
+                        .toArray();
+
+                if (returns.length < 10) {
+                    throw new RuntimeException("Insufficient data for " + ticker +
+                            ": " + returns.length + " days (need at least 10)");
+                }
+
+                returnsMap.put(ticker, returns);
+                logger.log(Level.INFO, "✓ Retrieved " + returns.length + " data points for " + ticker);
+
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Failed to fetch data for " + ticker + ": " + e.getMessage());
+                throw new RuntimeException("Failed to fetch data for " + ticker + ": " + e.getMessage(), e);
             }
-
-            returnsMap.put(ticker, returns);
         }
 
         // Build returns matrix
