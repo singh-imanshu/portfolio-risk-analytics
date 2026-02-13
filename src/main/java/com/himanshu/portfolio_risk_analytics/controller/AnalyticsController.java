@@ -17,7 +17,7 @@ import java.util.logging.Logger;
 import java.util.logging.Level;
 
 @RestController
-@RequestMapping("/api/v1/analytics")
+@RequestMapping("/v1/analytics")
 @CrossOrigin(origins = "*")
 
 public class AnalyticsController {

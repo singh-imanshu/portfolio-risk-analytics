@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 import java.util.logging.Level;
 
 @RestController
-@RequestMapping("/api/v1/holdings")
+@RequestMapping("/v1/holdings")
 @CrossOrigin(origins = "*")
 public class HoldingController {
     private static final Logger logger = Logger.getLogger(HoldingController.class.getName());

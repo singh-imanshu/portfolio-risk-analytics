@@ -4,23 +4,52 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import jakarta.annotation.PostConstruct;
 import java.security.Key;
 import java.util.Date;
-import java.util.logging.Logger;
 
+/**
+ * FIXED: Removed hardcoded default secret
+ * JWT_SECRET must be provided via environment variable (no fallback)
+ */
+@Slf4j
 @Component
 public class JwtTokenProvider {
-    private static final Logger logger = Logger.getLogger(JwtTokenProvider.class.getName());
-    @Value("${app.jwt.secret:mySecretKeyForPortfolioRiskAnalyticsThatIsAtLeast32CharactersLong}")
+
+    @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${app.jwt.expiration:86400000}") // 24 hours in milliseconds
+    @Value("${app.jwt.expiration:900000}") // 15 minutes (reduced from 24 hours)
     private long jwtExpiration;
 
     @Value("${app.jwt.refresh-expiration:604800000}") // 7 days
     private long refreshTokenExpiration;
+
+    /**
+     * Validate JWT secret on bean initialization.
+     * Fails fast if not properly configured.
+     */
+    @PostConstruct
+    public void validateSecret() {
+        if (jwtSecret == null || jwtSecret.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "JWT_SECRET environment variable must be set. " +
+                            "Generate with: openssl rand -base64 32"
+            );
+        }
+
+        if (jwtSecret.length() < 32) {
+            throw new IllegalArgumentException(
+                    "JWT_SECRET must be at least 32 characters (256 bits). " +
+                            "Current length: " + jwtSecret.length()
+            );
+        }
+
+        log.info("JWT secret validated successfully");
+    }
 
     public String generateToken(String userId, String email) {
         Date now = new Date();
@@ -73,7 +102,7 @@ public class JwtTokenProvider {
                     .parseClaimsJws(token);
             return true;
         } catch (Exception e) {
-            logger.warning("Token validation failed: " + e.getMessage());
+            log.warn("Token validation failed: {}", e.getMessage());
             return false;
         }
     }

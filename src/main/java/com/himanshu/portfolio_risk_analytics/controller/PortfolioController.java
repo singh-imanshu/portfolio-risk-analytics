@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 import java.util.logging.Level;
 
 @RestController
-@RequestMapping("/api/v1/portfolios")
+@RequestMapping("/v1/portfolios")
 @CrossOrigin(origins = "*")
 public class PortfolioController {
     private static final Logger logger = Logger.getLogger(PortfolioController.class.getName());

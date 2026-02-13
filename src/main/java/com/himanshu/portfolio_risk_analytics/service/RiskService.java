@@ -1,16 +1,33 @@
 package com.himanshu.portfolio_risk_analytics.service;
 
 import com.himanshu.portfolio_risk_analytics.dto.RiskMetricsDto;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.math3.linear.*;
 import org.apache.commons.math3.stat.correlation.Covariance;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * FIXED:
+ * 1. Added division by zero protection in beta calculation
+ * 2. Made risk-free rate configurable (was hardcoded 4.5%)
+ * 3. Added NaN/Infinity validation
+ * 4. Better error messages
+ */
+@Slf4j
 @Service
 public class RiskService {
     private final StockDataService stockDataService;
-    private static final double RISK_FREE_RATE = 0.045; // current US Treasury data
+
+    /**
+     * FIXED: Risk-free rate is now configurable via environment
+     * Default: 4.5% (can be updated daily)
+     */
+    @Value("${app.risk-free-rate:0.045}")
+    private double riskFreeRate;
+
     private static final String DEFAULT_BENCHMARK = "SPY"; // S&P 500 Proxy
 
     public RiskService(StockDataService stockDataService) {
@@ -64,10 +81,16 @@ public class RiskService {
         double annVariance = dailyVariance * 252; // Scale variance to annual
         double annVol = Math.sqrt(annVariance); // Volatility as sqrt of annualized variance
 
+        // Validate volatility
+        if (Double.isNaN(annVol) || Double.isInfinite(annVol)) {
+            log.warn("Invalid volatility calculated: {}", annVol);
+            annVol = 0.0;
+        }
+
         double annReturn = calculateAnnualizedReturn(data, weights);
 
-        // 5. Advanced Risk Metrics
-        double beta = calculateRobustBeta(data, weights, benchData);
+        // 5. Advanced Risk Metrics (FIXED: added error checking)
+        double beta = calculateRobustBeta(data, weights, benchData); // FIXED: division by zero protection
         double sortino = calculateSortinoRatio(data, weights, annReturn);
         double var95 = calculateParametricVaR(annReturn, annVol, 1.645); // 95% Confidence
 
@@ -88,13 +111,13 @@ public class RiskService {
             correlation = new double[][]{{1.0}};
         }
 
-        // 8. Fully Mapped DTO (Including Variance and Asset Volatilities)
+        // 8. Fully Mapped DTO
         return RiskMetricsDto.builder()
                 .tickers(tickers.toArray(new String[0]))
-                .variance(annVariance) // Fixed: Now correctly mapped to DTO
+                .variance(annVariance)
                 .volatility(annVol)
                 .expectedReturn(annReturn)
-                .sharpeRatio((annReturn - RISK_FREE_RATE) / annVol)
+                .sharpeRatio((annReturn - riskFreeRate) / (annVol > 0 ? annVol : 1.0))
                 .sortinoRatio(sortino)
                 .valueAtRisk95(var95)
                 .beta(beta)
@@ -114,16 +137,40 @@ public class RiskService {
         return meanDailyPortfolioReturn * 252;
     }
 
+    /**
+     * FIXED: Added division by zero protection
+     * Returns 0 if benchmark variance is zero or invalid
+     */
     private double calculateRobustBeta(double[][] data, double[] weights, double[] benchData) {
         double[] portReturns = new double[data.length];
         for (int t = 0; t < data.length; t++) {
             for (int i = 0; i < weights.length; i++) portReturns[t] += data[t][i] * weights[i];
         }
+
         RealMatrix combined = new Array2DRowRealMatrix(data.length, 2);
         combined.setColumn(0, portReturns);
         combined.setColumn(1, benchData);
+
         RealMatrix cov = new Covariance(combined).getCovarianceMatrix();
-        return cov.getEntry(0, 1) / cov.getEntry(1, 1); // Cov(p,m) / Var(m)
+
+        double benchVariance = cov.getEntry(1, 1);
+
+        // FIXED: Protect against division by zero
+        if (benchVariance == 0 || Double.isNaN(benchVariance) || Double.isInfinite(benchVariance)) {
+            log.warn("Invalid benchmark variance: {}", benchVariance);
+            return 0.0; // Return 0 instead of crashing
+        }
+
+        double covariance = cov.getEntry(0, 1);
+        double beta = covariance / benchVariance;
+
+        // Validate result
+        if (Double.isNaN(beta) || Double.isInfinite(beta)) {
+            log.warn("Invalid beta calculated: {}", beta);
+            return 0.0;
+        }
+
+        return beta;
     }
 
     private double calculateSortinoRatio(double[][] data, double[] weights, double annReturn) {
@@ -134,7 +181,7 @@ public class RiskService {
             if (rp < 0) downsideDevSum += Math.pow(rp, 2);
         }
         double annDownsideDev = Math.sqrt(downsideDevSum / data.length) * Math.sqrt(252);
-        return annDownsideDev == 0 ? 0 : (annReturn - RISK_FREE_RATE) / annDownsideDev;
+        return annDownsideDev == 0 ? 0 : (annReturn - riskFreeRate) / annDownsideDev;
     }
 
     private double calculateParametricVaR(double annReturn, double annVol, double zScore) {

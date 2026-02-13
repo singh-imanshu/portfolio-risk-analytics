@@ -12,7 +12,7 @@ import java.util.logging.Logger;
 import java.util.logging.Level;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/v1/auth")
 @CrossOrigin(origins = "*")
 public class AuthController {
     private static final Logger logger = Logger.getLogger(AuthController.class.getName());
