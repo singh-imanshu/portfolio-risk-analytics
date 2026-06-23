@@ -1,0 +1,6 @@
+[submodule "risque_backend"]
+	path = risque_backend
+	url = https://github.com/singh-imanshu/risque_backend.git
+[submodule "risque_frontend"]
+	path = risque_frontend
+	url = https://github.com/retarduser404/risque_frontend.git
