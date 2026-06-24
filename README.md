@@ -1,29 +1,32 @@
 # Portfolio Risk Analytics
 ---
 
-This repository acts as the root container for the Portfolio Risk Analytics platform. The application is divided into two Git submodules.
+This repository serves as the root container for the Portfolio Risk Analytics platform. To maintain a clean separation of concerns, the project utilizes a micro-repository architecture managed via Git submodules. 
 
-## Project Structure
+## What it does
 ---
 
-* **`risque_frontend`:** The React/Vite client interface.
-* **`risque_backend`:** The Java Spring Boot REST API.
+* **Portfolio Management**: Users can create portfolios and manage individual stock holdings[cite: 1, 2]. 
+* **Market Data Integration**: The backend integrates with the Alpha Vantage API to retrieve up-to-date stock data[cite: 2].
+* **Risk Analysis**: The platform evaluates portfolios and calculates specific risk metrics[cite: 2]. It displays these results visually on a dedicated analytics dashboard[cite: 1].
+* **Secure Access**: User sessions are secured using JWT (JSON Web Tokens) authentication[cite: 2].
+* **User Notifications**: The system includes backend email services[cite: 2]. It also handles OTP (One-Time Password) requests for account verification[cite: 2].
+* **AI Capabilities**: The backend includes configuration for a chat client, facilitating AI-driven portfolio analysis[cite: 2].
+
+## The Stack
+---
+
+* **Frontend**: Built with React and Vite[cite: 1]. It features custom hooks for state management and a component-based UI that includes modals, stat cards, and sidebars[cite: 1].
+* **Backend**: Developed using Java and Spring Boot[cite: 2]. It utilizes Maven for dependency management and follows a structured controller-service-repository architecture[cite: 2].
 
 ## Setup
 ---
 
-### 1. Clone the Project
+Because this repository relies on Git submodules, a standard Git clone operation will only pull the root directory structure and leave the submodule folders empty. Follow the instructions below to properly initialize the entire project workspace.
 
-To clone this repository and automatically pull the code for both the frontend and backend submodules, use the `--recurse-submodules` flag:
+### 1. Initial Clone
+
+To clone this repository and automatically fetch the underlying source code for both the frontend and backend submodules in a single step, use the `--recurse-submodules` flag:
 
 ```bash
 git clone --recurse-submodules [https://github.com/singh-imanshu/portfolio-risk-analytics.git](https://github.com/singh-imanshu/portfolio-risk-analytics.git)
-```
-
-### 2. Update an Existing Clone
-
-If you have already cloned the repository without pulling the submodules, initialize and update them by running:
-
-```bash
-git submodule update --init --recursive
-```
