@@ -55,6 +55,6 @@ git submodule update --init --recursive
 ### Analytics
 
 <p align="center">
-  <img src="screenshots/analytics-1.png" alt="Performance Analytics" width="48%">
-  <img src="screenshots/analytics-2.png" alt="Risk Analytics" width="48%">
+  <img src="screenshots/analytics-2.png" alt="Performance Analytics" width="48%">
+  <img src="screenshots/analytics-1.png" alt="Risk Analytics" width="48%">
 </p>
