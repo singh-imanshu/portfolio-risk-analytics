@@ -1,0 +1,13 @@
+# ── Environment secrets (NEVER commit) ────────────────────
+.env
+.env.*
+!.env.example
+
+# ── IDE ───────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+
+# ── OS metadata ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
